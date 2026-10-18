@@ -12,10 +12,17 @@ private Config config;
 void main(String[] args) throws IOException {
     loadConfig();
 
-    List<Player> players = new ArrayList<>();
-    players.add(loadPlayer("Ussa", "EOS_00023ca7836b4654976976aaece6cc97.ttp"));
-    players.add(loadPlayer("Rumi", "EOS_0002658277124e58b8c27e0fccc3688c.ttp"));
-    players.add(loadPlayer("Vivi", "EOS_00025db819124cae84ef79cedfc05c94.ttp"));
+    File saveDir = new File("/home/danny/.local/share/7DaysToDie/Saves/West Xuyofu Territory/Ussa 3/Player");
+//    File saveDir = new File("/home/danny/.local/share/7DaysToDie/Saves/Navezgane/Ussa 2/Player");
+//    File saveDir = new File("/home/danny/.local/share/7DaysToDie/Saves/Navezgane/Ussa/Player");
+
+    File[] playerFiles = saveDir.listFiles((dir, name) -> name.endsWith(".ttp"));
+
+    if(playerFiles == null) {
+        throw new RuntimeException("Unable to load .ttp files");
+    }
+
+    List<Player> players = Stream.of(playerFiles).map(this::loadPlayer).sorted(Comparator.comparing(Player::getName)).toList();
 
     SkillName[] skillNames = SkillName.values();
     Arrays.sort(skillNames, Comparator.comparing(SkillName::displayName));
@@ -110,26 +117,16 @@ public int longestDisplayName(SkillName[] skillNames) {
     return Collections.max(lengths);
 }
 
-private String getRowText(int stat) {
-    String text = " " + stat;
-
-    if(stat <= 9) {
-        text += "    |";
-    } else if(stat <= 99) {
-        text += "   |";
-    } else {
-        text += "  |";
+private Player loadPlayer(File file) {
+    Path path = file.toPath();
+    byte[] data;
+    try {
+        data = Files.readAllBytes(path);
+    } catch (IOException e) {
+        throw new RuntimeException(e);
     }
 
-    return text;
-}
-
-private Player loadPlayer(String name, String file) throws IOException {
-    String saveFile = "/home/danny/.local/share/7DaysToDie/Saves/West Xuyofu Territory/Ussa 3/Player/" + file;
-    Path path = Path.of(saveFile);
-    byte[] data = Files.readAllBytes(path);
-
-    Player player = new Player(name);
+    Player player = new Player(findPlayerName(data));
 
     for (SkillName skillName : SkillName.values()) {
         player.addSkill(skillName, findSkillValue(skillName, data));
@@ -138,18 +135,35 @@ private Player loadPlayer(String name, String file) throws IOException {
     return player;
 }
 
-private int findSkillValue(SkillName name, byte[] data) {
-    int index = findIndexForString(name, data);
-    return data[index];
+private String findPlayerName(byte[] data) {
+    int baseMale = findIndexForString("BaseMale", data);
+
+    if(baseMale == -1) {
+        baseMale = findIndexForString("Hank", data);
+    }
+
+    int nameEnd = baseMale - 8;
+    int nameStart = nameEnd;
+
+    while(data[nameStart] != 0) {
+        nameStart--;
+    }
+
+    return new String(Arrays.copyOfRange(data, nameStart + 2, nameEnd + 1));
 }
 
-private int findIndexForString(SkillName name, byte[] data) {
+private int findSkillValue(SkillName name, byte[] data) {
     String internal = name.internal();
-    byte[] nameBytes = internal.getBytes();
+    int indexStart = findIndexForString(internal, data);
+    int indexEnd = indexStart + internal.length();
+    return data[indexEnd];
+}
+
+private int findIndexForString(String search, byte[] data) {
+    byte[] nameBytes = search.getBytes();
     List<Byte> dataList = toList(data);
     List<Byte> nameBytesList = toList(nameBytes);
-    int index = Collections.indexOfSubList(dataList, nameBytesList);
-    return index + internal.length();
+    return Collections.indexOfSubList(dataList, nameBytesList);
 }
 
 private List<Byte> toList(byte[] array) {
